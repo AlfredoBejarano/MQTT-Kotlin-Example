@@ -74,6 +74,10 @@ class MqttDataSource(serverUri: String) {
         }
     }
 
+    fun disconnect() {
+        mqttAndroidClient.disconnect()
+    }
+
     fun subscribeToTopic(topic: String): LiveData<MqttResult> {
         _mqttStatusLiveData.postValue(MqttResult.Waiting)
         mqttAndroidClient.subscribe(topic, 0, null, object : IMqttActionListener {

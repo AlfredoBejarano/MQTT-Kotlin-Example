@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        mqttDataSource?.disconnect()
         mqttDataSource = null
         errorSnackbar = null
         super.onDestroy()
