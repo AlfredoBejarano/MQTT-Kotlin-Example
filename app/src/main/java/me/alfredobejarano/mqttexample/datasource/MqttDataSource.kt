@@ -1,28 +1,28 @@
 package me.alfredobejarano.mqttexample.datasource
 
-import android.app.Application
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import java.util.UUID
 import me.alfredobejarano.mqttexample.model.MqttResult
-import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.DisconnectedBufferOptions
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.IMqttToken
+import org.eclipse.paho.client.mqttv3.MqttAsyncClient
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttException
 import org.eclipse.paho.client.mqttv3.MqttMessage
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 
 private const val MQTT_DISCONNECT_BUFFER_SIZE = 100
 
-class MqttDataSource(app: Application, private val serverUri: String) {
+class MqttDataSource(serverUri: String) {
 
-    private val mqttAndroidClient: MqttAndroidClient =
-        MqttAndroidClient(app, "tcp://$serverUri", "android-test-client")
+    private val mqttAndroidClient: MqttAsyncClient =
+        MqttAsyncClient("tcp://$serverUri", UUID.randomUUID().toString(), MemoryPersistence())
 
     private val _mqttStatusLiveData: MutableLiveData<MqttResult> = MutableLiveData()
-    val mqttStatusLiveData: LiveData<MqttResult> = _mqttStatusLiveData
 
     init {
         mqttAndroidClient.setCallback(object : MqttCallbackExtended {
@@ -42,10 +42,10 @@ class MqttDataSource(app: Application, private val serverUri: String) {
                 _mqttStatusLiveData.postValue(MqttResult.Success(serverURI?.toByteArray()))
             }
         })
-        connect()
+        _mqttStatusLiveData.postValue(MqttResult.Waiting)
     }
 
-    private fun connect() {
+    fun connect(onConnected: () -> Unit, onError: MqttResult.Failure.() -> Unit = {}) {
         val mqttConnectionOptions = MqttConnectOptions()
         mqttConnectionOptions.isAutomaticReconnect = true
         mqttConnectionOptions.isCleanSession = false
@@ -61,11 +61,12 @@ class MqttDataSource(app: Application, private val serverUri: String) {
                     disconnectedBufferOptions.isDeleteOldestMessages = false
 
                     mqttAndroidClient.setBufferOpts(disconnectedBufferOptions)
-                    _mqttStatusLiveData.postValue(MqttResult.Success(asyncActionToken?.response?.payload))
+                    onConnected()
+                    _mqttStatusLiveData.postValue(MqttResult.Success("Connected".toByteArray()))
                 }
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                    _mqttStatusLiveData.postValue(MqttResult.Failure(exception))
+                    MqttResult.Failure(exception).onError()
                 }
             })
         } catch (ex: MqttException) {
@@ -73,19 +74,23 @@ class MqttDataSource(app: Application, private val serverUri: String) {
         }
     }
 
-    fun subscribeToTopic(topic: String) {
+    fun subscribeToTopic(topic: String): LiveData<MqttResult> {
+        _mqttStatusLiveData.postValue(MqttResult.Waiting)
         mqttAndroidClient.subscribe(topic, 0, null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken?) {
-                _mqttStatusLiveData.postValue(MqttResult.Success(asyncActionToken?.response?.payload))
+                _mqttStatusLiveData.postValue(MqttResult.Success("Subscribed!".toByteArray()))
             }
 
             override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
                 _mqttStatusLiveData.postValue(MqttResult.Failure(exception))
             }
         })
+
+        return _mqttStatusLiveData
     }
 
     fun publishToTopic(topic: String, payload: String) {
+        _mqttStatusLiveData.postValue(MqttResult.Waiting)
         mqttAndroidClient.publish(topic, MqttMessage(payload.toByteArray(Charsets.UTF_8)))
     }
 }
