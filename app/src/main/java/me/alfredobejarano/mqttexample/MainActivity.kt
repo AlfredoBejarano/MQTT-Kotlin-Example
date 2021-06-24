@@ -19,10 +19,10 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(LayoutInflater.from(this))
         setContentView(binding.root)
 
-        mqttDataSource = MqttDataSource(application, MQTT_SERVER, MQTT_TOPIC)
+        mqttDataSource = MqttDataSource(application, MQTT_SERVER)
 
         binding.sendMqttMessageButton.setOnClickListener {
-            mqttDataSource?.publishToTopic(binding.mqttMessageEditText.text.toString())
+            mqttDataSource?.publishToTopic(MQTT_TOPIC, binding.mqttMessageEditText.text.toString())
         }
     }
 

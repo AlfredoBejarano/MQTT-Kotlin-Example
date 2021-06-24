@@ -1,7 +1,9 @@
 package me.alfredobejarano.mqttexample.datasource
 
 import android.app.Application
-import android.util.Log
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import me.alfredobejarano.mqttexample.model.MqttResult
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.DisconnectedBufferOptions
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
@@ -12,30 +14,32 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttException
 import org.eclipse.paho.client.mqttv3.MqttMessage
 
-private const val LOG_TAG = "ANDROID-MQTT"
 private const val MQTT_DISCONNECT_BUFFER_SIZE = 100
 
-class MqttDataSource(app: Application, private val serverUri: String, private val topic: String) {
+class MqttDataSource(app: Application, private val serverUri: String) {
 
     private val mqttAndroidClient: MqttAndroidClient =
         MqttAndroidClient(app, "tcp://$serverUri", "android-test-client")
 
+    private val _mqttStatusLiveData: MutableLiveData<MqttResult> = MutableLiveData()
+    val mqttStatusLiveData: LiveData<MqttResult> = _mqttStatusLiveData
+
     init {
         mqttAndroidClient.setCallback(object : MqttCallbackExtended {
             override fun connectionLost(cause: Throwable?) {
-                Log.d(LOG_TAG, "MQTT connection lost, caused by:", cause)
+                _mqttStatusLiveData.postValue(MqttResult.Failure(cause))
             }
 
             override fun messageArrived(topic: String?, message: MqttMessage?) {
-                Log.d(LOG_TAG, "Message from $topic has arrived: ${message.toString()}")
+                _mqttStatusLiveData.postValue(MqttResult.Success(message?.payload))
             }
 
             override fun deliveryComplete(token: IMqttDeliveryToken?) {
-                Log.d(LOG_TAG, "Message delivered correctly.")
+                _mqttStatusLiveData.postValue(MqttResult.Success(token?.message?.payload))
             }
 
             override fun connectComplete(reconnect: Boolean, serverURI: String?) {
-                Log.d(LOG_TAG, "Connected to $serverURI")
+                _mqttStatusLiveData.postValue(MqttResult.Success(serverURI?.toByteArray()))
             }
         })
         connect()
@@ -57,31 +61,31 @@ class MqttDataSource(app: Application, private val serverUri: String, private va
                     disconnectedBufferOptions.isDeleteOldestMessages = false
 
                     mqttAndroidClient.setBufferOpts(disconnectedBufferOptions)
-                    subscribeToTopic()
+                    _mqttStatusLiveData.postValue(MqttResult.Success(asyncActionToken?.response?.payload))
                 }
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                    Log.e(LOG_TAG, "Failed to connect to $serverUri. caused by:", exception)
+                    _mqttStatusLiveData.postValue(MqttResult.Failure(exception))
                 }
             })
         } catch (ex: MqttException) {
-            Log.e(LOG_TAG, "Failed to connect to $serverUri. caused by:", ex)
+            _mqttStatusLiveData.postValue(MqttResult.Failure(ex))
         }
     }
 
-    private fun subscribeToTopic() {
+    fun subscribeToTopic(topic: String) {
         mqttAndroidClient.subscribe(topic, 0, null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken?) {
-                Log.d(LOG_TAG, "Subscribed to: $topic")
+                _mqttStatusLiveData.postValue(MqttResult.Success(asyncActionToken?.response?.payload))
             }
 
             override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                Log.e(LOG_TAG, "Subscription to $topic failed, caused by", exception)
+                _mqttStatusLiveData.postValue(MqttResult.Failure(exception))
             }
         })
     }
 
-    fun publishToTopic(payload: String) {
+    fun publishToTopic(topic: String, payload: String) {
         mqttAndroidClient.publish(topic, MqttMessage(payload.toByteArray(Charsets.UTF_8)))
     }
 }
